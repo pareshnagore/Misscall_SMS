@@ -13,12 +13,22 @@ class SmsSenderService : IntentService("SmsSenderService") {
         val missedCall = getLastMissedCallInfo()
         if (missedCall != null) {
             val (number, timestamp) = missedCall
-            // Use a separate SharedPreferences for tracking handled calls
             val appPrefs: SharedPreferences = getSharedPreferences("missed_call_sms", Context.MODE_PRIVATE)
-            val lastHandledNumber = appPrefs.getString("last_handled_number", null)
-            val lastHandledTimestamp = appPrefs.getLong("last_handled_timestamp", -1L)
 
-            if ((number != lastHandledNumber || timestamp != lastHandledTimestamp) && isUnknownNumber(number)) {
+            // Load handled set from SharedPreferences (as JSON array of objects)
+            val handledKey = "handled_missed_calls"
+            val handledJson = appPrefs.getString(handledKey, "[]")
+            val handledArray = org.json.JSONArray(handledJson)
+            var alreadyHandled = false
+            for (i in 0 until handledArray.length()) {
+                val obj = handledArray.getJSONObject(i)
+                if (obj.getString("number") == number && obj.getLong("timestamp") == timestamp) {
+                    alreadyHandled = true
+                    break
+                }
+            }
+
+            if (!alreadyHandled && isUnknownNumber(number)) {
                 // Read SMS text from Flutter's SharedPreferences
                 val sharedPrefs: SharedPreferences = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 val smsText = sharedPrefs.getString("flutter.sms_text", "Hello! Messege me with purpose of your call and I will get back to you.")!!
@@ -37,11 +47,12 @@ class SmsSenderService : IntentService("SmsSenderService") {
                     smsStatus = "failure"
                 }
 
-                // Save this missed call as handled
-                appPrefs.edit()
-                    .putString("last_handled_number", number)
-                    .putLong("last_handled_timestamp", timestamp)
-                    .apply()
+                // Add this missed call to handled set
+                val handledEntry = org.json.JSONObject()
+                handledEntry.put("number", number)
+                handledEntry.put("timestamp", timestamp)
+                handledArray.put(handledEntry)
+                appPrefs.edit().putString(handledKey, handledArray.toString()).apply()
 
                 // Log the SMS event (number, timestamp, status) in SharedPreferences as JSON array
                 val logKey = "sms_sent_log"
