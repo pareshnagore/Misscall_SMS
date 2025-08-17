@@ -1,0 +1,150 @@
+import 'package:flutter/material.dart';
+import 'package:phone_state/phone_state.dart';
+import 'package:call_log/call_log.dart';
+import 'package:telephony/telephony.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final Telephony telephony = Telephony.instance;
+  String lastMissedCallNumber = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+    _listenPhoneState();
+  }
+
+  void _requestPermissions() async {
+    await telephony.requestPhoneAndSmsPermissions;
+  }
+
+  void _listenPhoneState() async {
+    PhoneState.stream.listen((event) async {
+      if (event.status == PhoneStateStatus.NOTHING || event.status == PhoneStateStatus.CALL_ENDED) {
+        final Iterable<CallLogEntry> logs = await CallLog.get();
+        final lastCall = logs.first;
+
+        if (lastCall.callType == CallType.missed) {
+          final number = lastCall.number;
+          if (number != null && number.isNotEmpty) {
+            setState(() {
+              lastMissedCallNumber = number;
+            });
+
+            telephony.sendSms(
+              to: number,
+              message: "Hello! This is a test SMS for missed calls.",
+            );
+          }
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Missed Call SMS Test')),
+        body: Center(
+          child: Text(
+            lastMissedCallNumber.isEmpty
+                ? "Waiting for missed calls..."
+                : "SMS sent to: $lastMissedCallNumber",
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+
+
+-----------------------------------------------------------------------------
+
+
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+void main() {
+  runApp(MissCallApp());
+}
+
+class MissCallApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Missed Call SMS',
+      home: PermissionRequestPage(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class PermissionRequestPage extends StatefulWidget {
+  @override
+  _PermissionRequestPageState createState() => _PermissionRequestPageState();
+}
+
+class _PermissionRequestPageState extends State<PermissionRequestPage> {
+  bool permissionsGranted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    requestPermissions();
+  }
+
+  Future<void> requestPermissions() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.phone,
+      Permission.sms,
+      Permission.contacts
+    ].request();
+
+    bool allGranted = statuses.values.every((status) => status.isGranted);
+
+    setState(() {
+      permissionsGranted = allGranted;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Missed Call SMS'),
+      ),
+      body: Center(
+        child: permissionsGranted
+            ? Text(
+                'All permissions granted.\nBackground SMS service is active.',
+                textAlign: TextAlign.center,
+              )
+            : ElevatedButton(
+                onPressed: requestPermissions,
+                child: Text('Grant Permissions'),
+              ),
+      ),
+    );
+  }
+}
+
+
+
+
+
+-----------------------------------------------------------------------------------
