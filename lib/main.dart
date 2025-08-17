@@ -1,25 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-void main() {
-  runApp(MissCallApp());
-}
-
-class MissCallApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Missed Call SMS',
-      theme: ThemeData(
-        primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: Color(0xFFF2F2F2),
-      ),
-      home: PermissionRequestPage(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
+import 'dart:convert';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart';
+import 'package:call_log/call_log.dart';
 
 class PermissionRequestPage extends StatefulWidget {
   @override
@@ -79,6 +63,27 @@ class _PermissionRequestPageState extends State<PermissionRequestPage> {
       appBar: AppBar(
         title: Text('Missed Call SMS'),
         centerTitle: true,
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Colors.teal,
+              ),
+              child: Text('Menu', style: TextStyle(color: Colors.white, fontSize: 24)),
+            ),
+            ListTile(
+              leading: Icon(Icons.sms_outlined),
+              title: Text('SMS Sent Log'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/smsLog');
+              },
+            ),
+          ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -187,6 +192,124 @@ class _PermissionRequestPageState extends State<PermissionRequestPage> {
                 ),
               ),
       ),
+    );
+  }
+}
+// ...existing code...
+
+
+void main() {
+  runApp(MissCallApp());
+}
+
+class MissCallApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Missed Call SMS',
+      theme: ThemeData(
+        primarySwatch: Colors.teal,
+        scaffoldBackgroundColor: Color(0xFFF2F2F2),
+      ),
+      home: PermissionRequestPage(),
+      debugShowCheckedModeBanner: false,
+      routes: {
+        '/smsLog': (context) => SmsLogPage(),
+      },
+    );
+  }
+}
+
+// Secondary screen to show SMS sent log
+class SmsLogPage extends StatefulWidget {
+  @override
+  _SmsLogPageState createState() => _SmsLogPageState();
+}
+
+class _SmsLogPageState extends State<SmsLogPage> {
+  static const platform = MethodChannel('misscall_sms/sms_log');
+  List<Map<String, dynamic>> smsLog = [];
+  List<Map<String, dynamic>> missedCalls = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadData();
+  }
+
+  Future<void> loadData() async {
+    // Fetch SMS log from platform channel
+    String? logJson;
+    try {
+      logJson = await platform.invokeMethod('getSmsLog');
+    } catch (e) {
+      logJson = '[]';
+    }
+    List<dynamic> logList = json.decode(logJson ?? '[]');
+    smsLog = logList.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+    smsLog.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
+
+    // Fetch missed calls from call_log plugin
+    Iterable<CallLogEntry> entries = await CallLog.query(type: CallType.missed);
+    // Only unknown numbers (no name)
+    missedCalls = entries
+        .where((entry) => entry.name == null && entry.number != null)
+        .map((entry) => {
+              'number': entry.number,
+              'timestamp': entry.timestamp,
+            })
+        .toList();
+    missedCalls.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
+
+    setState(() {
+      loading = false;
+    });
+  }
+
+  String formatTimestamp(int? timestamp) {
+    if (timestamp == null) return '';
+    final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    return "${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('SMS Sent Log'),
+      ),
+      body: loading
+          ? Center(child: CircularProgressIndicator())
+          : missedCalls.isEmpty
+              ? Center(child: Text('No missed calls from unknown numbers.'))
+              : ListView.builder(
+                  itemCount: missedCalls.length,
+                  itemBuilder: (context, index) {
+                    final call = missedCalls[index]; // already sorted, latest first
+                    final smsEntry = smsLog.firstWhere(
+                      (log) => log['number'] == call['number'] && log['timestamp'] == call['timestamp'],
+                      orElse: () => {},
+                    );
+                    final status = smsEntry.isNotEmpty ? smsEntry['status'] : 'not sent';
+                    return Card(
+                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          status == 'success'
+                              ? Icons.check_circle
+                              : (status == 'failure' ? Icons.error : Icons.sms_failed),
+                          color: status == 'success'
+                              ? Colors.green
+                              : (status == 'failure' ? Colors.red : Colors.grey),
+                        ),
+                        title: Text(call['number'] ?? ''),
+                        subtitle: Text(formatTimestamp(call['timestamp'])),
+                        trailing: Text(status ?? '', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
