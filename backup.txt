@@ -148,3 +148,50 @@ class _PermissionRequestPageState extends State<PermissionRequestPage> {
 
 
 -----------------------------------------------------------------------------------
+
+## SmsSenderService.kt
+
+package com.example.misscall_sms_app
+
+import android.app.IntentService
+import android.content.Intent
+import android.telephony.SmsManager
+import android.provider.CallLog
+
+class SmsSenderService : IntentService("SmsSenderService") {
+
+    override fun onHandleIntent(intent: Intent?) {
+        val lastCallNumber = getLastMissedCallNumber()
+        if (!lastCallNumber.isNullOrEmpty()) {
+            // Read SMS text from SharedPreferences saved by Flutter
+            val sharedPrefs: SharedPreferences = getSharedPreferences("missed_call_sms", Context.MODE_PRIVATE)
+            val smsText = sharedPrefs.getString("sms_text", "Hello! This is a test SMS for missed calls.")!!
+
+            val smsManager = SmsManager.getDefault()
+            smsManager.sendTextMessage(
+                lastCallNumber,
+                null,
+                smsText,
+                null,
+                null
+            )
+        }
+    }
+
+    private fun getLastMissedCallNumber(): String? {
+        val cursor = contentResolver.query(
+            CallLog.Calls.CONTENT_URI,
+            null,
+            null,
+            null,
+            "${CallLog.Calls.DATE} DESC"
+        )
+        cursor?.use {
+            if (it.moveToFirst() && it.getInt(it.getColumnIndexOrThrow(CallLog.Calls.TYPE)) == CallLog.Calls.MISSED_TYPE) {
+                return it.getString(it.getColumnIndexOrThrow(CallLog.Calls.NUMBER))
+            }
+        }
+        return null
+    }
+}
+

@@ -10,9 +10,9 @@ import android.content.SharedPreferences
 class SmsSenderService : IntentService("SmsSenderService") {
 
     override fun onHandleIntent(intent: Intent?) {
-        val missedCall = getLastMissedCallInfo()
-        if (missedCall != null) {
-            val (number, timestamp) = missedCall
+        val number = intent?.getStringExtra("missed_number")
+        val timestamp = intent?.getLongExtra("missed_timestamp", -1L)
+        if (number != null && timestamp != null && timestamp > 0) {
             val appPrefs: SharedPreferences = getSharedPreferences("missed_call_sms", Context.MODE_PRIVATE)
 
             // Load handled set from SharedPreferences (as JSON array of objects)
@@ -54,7 +54,7 @@ class SmsSenderService : IntentService("SmsSenderService") {
                 handledArray.put(handledEntry)
                 appPrefs.edit().putString(handledKey, handledArray.toString()).apply()
 
-                // Log the SMS event (number, timestamp, status) in SharedPreferences as JSON array
+                // Log the SMS event (number, timestamp, status, sent_time) in SharedPreferences as JSON array
                 val logKey = "sms_sent_log"
                 val logJson = appPrefs.getString(logKey, "[]")
                 val logArray = org.json.JSONArray(logJson)
@@ -62,6 +62,9 @@ class SmsSenderService : IntentService("SmsSenderService") {
                 logEntry.put("number", number)
                 logEntry.put("timestamp", timestamp)
                 logEntry.put("status", smsStatus)
+                if (smsStatus == "success") {
+                    logEntry.put("sent_time", System.currentTimeMillis())
+                }
                 logArray.put(logEntry)
                 appPrefs.edit().putString(logKey, logArray.toString()).apply()
             }

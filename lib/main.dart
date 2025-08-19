@@ -304,7 +304,20 @@ class _SmsLogPageState extends State<SmsLogPage> {
                               : (status == 'failure' ? Colors.red : Colors.grey),
                         ),
                         title: Text(call['number'] ?? ''),
-                        subtitle: Text(formatTimestamp(call['timestamp'])),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(formatTimestamp(call['timestamp'])),
+                            if (status == 'success' && smsEntry['sent_time'] != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(
+                                  'SMS sent at: ${formatTimestamp(smsEntry['sent_time'])}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                ),
+                              ),
+                          ],
+                        ),
                         trailing: Text(status ?? '', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     );
